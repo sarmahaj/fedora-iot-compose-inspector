@@ -1,0 +1,32 @@
+name: Daily Fedora IoT Compose Check
+
+on:
+  # Trigger 1: On a schedule (every day at 11:30 UTC)
+  schedule:
+    - cron: '30 11 * * *'
+  
+  # Trigger 2: Manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  check-composes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Fedora IoT inspection script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MY_GITHUB_TOKEN: ${{ secrets.MY_MY_GITHUB_TOKEN }} # Ensure this matches your secret name in repo settings
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: python check_fedora_iot.py
