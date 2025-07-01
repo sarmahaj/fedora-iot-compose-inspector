@@ -9,6 +9,7 @@ import google.generativeai as genai
 from github import Github
 import time
 import json
+from datetime import datetime, timedelta, timezone
 
 # --- Load Environment Variables ---
 # This loads variables from a local .env file for development.
@@ -163,16 +164,19 @@ def get_all_compose_links():
                 print("❌ Critical Error: Could not fetch the main compose page after multiple attempts.")
                 return None
 
-def find_latest_compose_for_version(version, all_links):
-    """Finds the URL for the most recent compose directory for a specific version."""
-    print(f"🔍 Searching for the latest compose for Fedora IoT {version}...")
-    pattern = re.compile(f"Fedora-IoT-{version}-\d+\.\d+\/")
+def find_compose_for_current_date(version, all_links, current_date_str):
+    """Finds the URL for the current day's compose directory for a specific version."""
+    print(f"🔍 Searching for compose on {current_date_str} for Fedora IoT {version}...")
+    # This pattern looks for "Fedora-IoT-43-20250701.0/"
+    pattern = re.compile(f"Fedora-IoT-{version}-{current_date_str}\\.\\d+\\/")
     version_links = [link.get('href') for link in all_links if pattern.match(link.get('href', ''))]
+    
     if not version_links:
-        print(f"  -> No composes found for version {version}.")
         return None
+        
+    # In case of multiple builds in one day (e.g., .0, .1), sort to get the latest.
     latest_compose_dir = sorted(version_links)[-1]
-    print(f"  -> Found latest: {latest_compose_dir}")
+    print(f"  -> Found compose for current date: {latest_compose_dir}")
     return f"{COMPOSE_BASE_URL}{latest_compose_dir}"
 
 def inspect_compose_url(compose_url, version_name):
@@ -235,18 +239,28 @@ def main():
     print("🚀 Starting Intelligent Fedora IoT Compose Diagnosis 🚀")
     results_summary = []
     overall_failure = False
+
+    # Get the current date in UTC, as the servers and runner operate on UTC time.
+    current_date = datetime.now(timezone.utc)
+    current_date_str_for_search = current_date.strftime('%Y%m%d')
+    current_date_str_for_report = current_date.strftime('%Y-%m-%d')
+    
     all_links = get_all_compose_links()
     if all_links:
         for version in VERSIONS_TO_CHECK:
             print("-" * 40)
-            latest_url = find_latest_compose_for_version(version, all_links)
-            if latest_url:
-                summary_line, has_failed = inspect_compose_url(latest_url, f"Fedora-IoT-{version}")
+            compose_url = find_compose_for_current_date(version, all_links, current_date_str_for_search)
+            if compose_url:
+                summary_line, has_failed = inspect_compose_url(compose_url, f"Fedora-IoT-{version}")
                 results_summary.append(summary_line)
                 if has_failed:
                     overall_failure = True
             else:
-                results_summary.append(f"⚪ *Fedora-IoT-{version}:* No compose found to check.")
+                # register as a failure if current date compose is missing
+                summary_line = f"❌ *Fedora-IoT-{version}:* No compose found for the current date ({current_date_str_for_report}). This could be a failure or the build has not started yet."
+                results_summary.append(summary_line)
+                overall_failure = True
+                print(f"  -> {summary_line}")
         
         print("\n" + "="*20 + " Run Summary " + "="*20)
 
@@ -257,7 +271,7 @@ def main():
             for report in failure_reports:
                 clean_report = report.replace("```", "")
                 print(clean_report + "\n" + "-"*40)
-        final_message = f"📰 *Fedora IoT Compose Status Summary - {datetime.now().strftime('%Y-%m-%d')}*\n\n" + "\n\n".join(results_summary)
+        final_message = f"📰 *Fedora IoT Compose Status Summary - {current_date_str_for_search}*\n\n" + "\n\n".join(results_summary)
         send_slack_notification(final_message)
         if overall_failure:
             print("\n‼️ Inspection finished with one or more failures.")
