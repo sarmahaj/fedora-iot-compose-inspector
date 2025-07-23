@@ -16,24 +16,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Log in to Bitwarden
-        # This action securely logs into your Bitwarden vault.
-        uses: bitwarden/actions/login@v2
-        with:
-          client_id: ${{ secrets.BW_CLIENT_ID }}
-          client_secret: ${{ secrets.BW_CLIENT_SECRET }}
-          organization_id: ${{ secrets.BW_ORGANIZATION_ID }}
-
-      - name: Get Secrets from Bitwarden
-        id: get_secrets
-        uses: bitwarden/actions/get-secret@v2
-        with:
-          # The key is the name of the secret we want to create in the workflow.
-          # The value is the name of the item as it is stored in your Bitwarden vault.
-          GEMINI_API_KEY: "GEMINI_API_KEY"
-          MY_GITHUB_TOKEN: "MY_GITHUB_TOKEN"
-          SLACK_WEBHOOK_URL: "SLACK_WEBHOOK_URL"
-      # --- End of New Steps ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -45,6 +27,6 @@ jobs:
       - name: Run Fedora IoT inspection script
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          MY_GITHUB_TOKEN: ${{ secrets.MY_MY_GITHUB_TOKEN }} # Ensure this matches your secret name in repo settings
+          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }} # Ensure this matches your secret name in repo settings
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python check_fedora_iot.py

@@ -2,4 +2,5 @@ requests
 beautifulsoup4
 google-generativeai
 python-dotenv
+openai
 PyGithub
