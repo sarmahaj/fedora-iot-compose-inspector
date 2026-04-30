@@ -1,11 +1,8 @@
 name: Daily Fedora IoT Compose Check
 
 on:
-  # Trigger 1: On a schedule (every day at 12:30 UTC)
   schedule:
     - cron: '30 12 * * *'
-  
-  # Trigger 2: Manually from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -24,9 +21,24 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
       - name: Run Fedora IoT inspection script
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }} # Ensure this matches your secret name in repo settings
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION || 'global' }}
+          AI_MODEL: ${{ vars.AI_MODEL || 'claude-sonnet-4-6' }}
+          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python check_fedora_iot.py
+
+      - name: Upload daily report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-report-${{ github.run_id }}
+          path: daily-report-*.json
+          retention-days: 90
