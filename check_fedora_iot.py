@@ -617,7 +617,13 @@ def inspect_version(version, all_links, current_date_str):
     report["containers"] = {repo: check_quay_container(repo, version) for repo in QUAY_REPOS}
 
     if status in ("DOOMED", "FINISHED_INCOMPLETE"):
-        report["diagnosis"] = diagnose_failure(compose_url, f"Fedora-IoT-{version}")
+        if ai_client:
+            report["diagnosis"] = diagnose_failure(compose_url, f"Fedora-IoT-{version}")
+        else:
+            report["diagnosis"] = (
+                f":robot_face: *AI diagnosis available locally:*\n"
+                f"```python check_fedora_iot.py --diagnose {build_name}```"
+            )
 
     return report
 
@@ -635,7 +641,31 @@ def save_daily_report(date_str, reports):
     print(f"Daily report saved to {report_file}")
 
 
+def run_diagnose(build_name):
+    """Run AI diagnosis on a specific compose build (e.g. Fedora-IoT-42-20260427.0)."""
+    if not ai_client:
+        print("ERROR: Claude on Vertex AI not configured. Run 'gcloud auth application-default login' first.")
+        sys.exit(1)
+
+    compose_url = f"{COMPOSE_BASE_URL}{build_name}/"
+    status = check_compose_status(compose_url)
+    if not status:
+        print(f"ERROR: Could not find compose at {compose_url}")
+        sys.exit(1)
+
+    print(f"Compose: {build_name} (status: {status})")
+    result = diagnose_failure(compose_url, build_name)
+    print("\n" + "=" * 60)
+    print(result)
+    print("=" * 60)
+
+
 def main():
+    # Handle --diagnose mode
+    if len(sys.argv) >= 3 and sys.argv[1] == "--diagnose":
+        run_diagnose(sys.argv[2])
+        return
+
     print("Starting Fedora IoT Compose Inspection")
     print("=" * 50)
 
