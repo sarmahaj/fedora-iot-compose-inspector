@@ -33,7 +33,7 @@ jobs:
           AI_MODEL: ${{ vars.AI_MODEL || 'claude-sonnet-4-5@20250929' }}
           MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          DISABLE_SLACK: ${{ vars.DISABLE_SLACK || 'false' }}
+          DISABLE_SLACK: 'true'  # TODO: Change to 'false' after testing is complete
         run: python check_fedora_iot.py
 
       - name: Upload daily report artifact
