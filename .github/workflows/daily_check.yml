@@ -35,6 +35,7 @@ jobs:
           MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DISABLE_SLACK: 'true'  # TODO: Change to 'false' after testing is complete
+          OVERRIDE_DATE: '20260818'  # TODO: Remove after testing - using yesterday's date to test AI analysis
         run: python check_fedora_iot.py
 
       - name: Upload daily report artifact
