@@ -488,6 +488,13 @@ def send_slack_notification(blocks):
             if len(text) > 2900:
                 block["text"]["text"] = text[:2900] + "\n... _(truncated)_"
 
+    # Disable Slack for testing - set DISABLE_SLACK=true to skip sending
+    if os.getenv("DISABLE_SLACK", "false").lower() == "true":
+        print("\n" + "=" * 60)
+        print("SLACK DISABLED (DISABLE_SLACK=true)")
+        print("=" * 60)
+        return
+
     if not SLACK_WEBHOOK_URL:
         print("\n" + "=" * 60)
         print("SLACK PREVIEW (SLACK_WEBHOOK_URL not set)")
