@@ -20,15 +20,16 @@ RETRY_DELAY_SECONDS = 60
 RUN_URL = f"https://github.com/{os.getenv('GITHUB_REPOSITORY', 'your/repo')}/actions/runs/{os.getenv('GITHUB_RUN_ID', 'local')}"
 
 # --- AI Configuration (Claude on Vertex AI) ---
-GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "itpc-gcp-core-pe-eng-claude")
-GCP_REGION = os.getenv("GCP_REGION", "global")
-AI_MODEL = os.getenv("AI_MODEL", "claude-sonnet-4-6")
+# Use same configuration as Claude Code session
+VERTEX_PROJECT_ID = os.getenv("ANTHROPIC_VERTEX_PROJECT_ID", "itpc-ca-b7a2ceb3c4")
+AI_MODEL = os.getenv("AI_MODEL", "claude-sonnet-4-5@20250929")
 ai_client = None
 
 try:
     from anthropic import AnthropicVertex
-    ai_client = AnthropicVertex(project_id=GCP_PROJECT_ID, region=GCP_REGION)
-    print(f"AI configured: Claude on Vertex AI (project={GCP_PROJECT_ID}, region={GCP_REGION}, model={AI_MODEL})")
+    # Initialize without explicit project/region - uses application default credentials
+    ai_client = AnthropicVertex()
+    print(f"AI configured: Claude on Vertex AI (project={VERTEX_PROJECT_ID}, model={AI_MODEL})")
 except Exception as e:
     print(f"Warning: Could not configure Claude on Vertex AI: {e}. AI analysis will be disabled.")
 
@@ -251,7 +252,7 @@ def run_ai_analysis(context, prompt_instructions):
     try:
         response = ai_client.messages.create(
             model=AI_MODEL,
-            max_tokens=1024,
+            max_tokens=2048,
             messages=[{"role": "user", "content": full_prompt}]
         )
         return response.content[0].text
@@ -621,8 +622,8 @@ def inspect_version(version, all_links, current_date_str):
             report["diagnosis"] = diagnose_failure(compose_url, f"Fedora-IoT-{version}")
         else:
             report["diagnosis"] = (
-                f":robot_face: *AI diagnosis available locally:*\n"
-                f"```python check_fedora_iot.py --diagnose {build_name}```"
+                f":information_source: *Manual investigation needed*\n"
+                f"Check logs at: <{compose_url}logs/|Compose logs directory>"
             )
 
     return report
@@ -644,7 +645,7 @@ def save_daily_report(date_str, reports):
 def run_diagnose(build_name):
     """Run AI diagnosis on a specific compose build (e.g. Fedora-IoT-42-20260427.0)."""
     if not ai_client:
-        print("ERROR: Claude on Vertex AI not configured. Run 'gcloud auth application-default login' first.")
+        print("ERROR: AI client not configured. Run 'gcloud auth application-default login' first.")
         sys.exit(1)
 
     compose_url = f"{COMPOSE_BASE_URL}{build_name}/"
@@ -669,7 +670,14 @@ def main():
     print("Starting Fedora IoT Compose Inspection")
     print("=" * 50)
 
-    current_date = datetime.now(timezone.utc)
+    # Allow date override for testing
+    override_date = os.getenv("OVERRIDE_DATE")
+    if override_date:
+        current_date = datetime.strptime(override_date, '%Y%m%d').replace(tzinfo=timezone.utc)
+        print(f"[TEST MODE] Using override date: {override_date}")
+    else:
+        current_date = datetime.now(timezone.utc)
+
     current_date_str = current_date.strftime('%Y%m%d')
     current_date_display = current_date.strftime('%Y-%m-%d')
 
