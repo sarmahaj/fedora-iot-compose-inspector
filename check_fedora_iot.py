@@ -22,14 +22,15 @@ RUN_URL = f"https://github.com/{os.getenv('GITHUB_REPOSITORY', 'your/repo')}/act
 # --- AI Configuration (Claude on Vertex AI) ---
 # Use same configuration as Claude Code session
 VERTEX_PROJECT_ID = os.getenv("ANTHROPIC_VERTEX_PROJECT_ID", "itpc-ca-b7a2ceb3c4")
+VERTEX_REGION = os.getenv("CLOUD_ML_REGION", "us-east5")
 AI_MODEL = os.getenv("AI_MODEL", "claude-sonnet-4-5@20250929")
 ai_client = None
 
 try:
     from anthropic import AnthropicVertex
-    # Initialize without explicit project/region - uses application default credentials
-    ai_client = AnthropicVertex()
-    print(f"AI configured: Claude on Vertex AI (project={VERTEX_PROJECT_ID}, model={AI_MODEL})")
+    # Initialize with project and region
+    ai_client = AnthropicVertex(project_id=VERTEX_PROJECT_ID, region=VERTEX_REGION)
+    print(f"AI configured: Claude on Vertex AI (project={VERTEX_PROJECT_ID}, region={VERTEX_REGION}, model={AI_MODEL})")
 except Exception as e:
     print(f"Warning: Could not configure Claude on Vertex AI: {e}. AI analysis will be disabled.")
 
