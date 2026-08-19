@@ -457,24 +457,27 @@ def diagnose_failure(compose_url, version_name):
     except (json.JSONDecodeError, ValueError):
         return f"*AI Diagnosis:*\n```{raw_analysis[:2500]}```"
 
-    # Format output
-    actions = "\n".join(f"  {i+1}. {a}" for i, a in enumerate(result.get("recommended_actions", [])))
-    arches = ", ".join(result.get("affected_arches", [])) or "Unknown"
+    # Format output - simplified for Slack readability
+    root_cause = result.get('root_cause', 'Unknown')
+    severity = result.get('severity', 'unknown')
+    actions = result.get("recommended_actions", [])
 
-    diagnosis = (
-        f"*AI Diagnosis ({version_name}):*\n"
-        f"> *Root cause:* {result.get('root_cause', 'Unknown')}\n"
-        f"> *Error:* `{result.get('error_message', 'N/A')}`\n"
-        f"> *Type:* {result.get('failure_type', 'UNKNOWN')} | *Severity:* {result.get('severity', 'unknown')}\n"
-        f"> *Affected arches:* {arches}\n"
-    )
-    if result.get("missing_packages"):
-        diagnosis += f"> *Missing packages:* {', '.join(result['missing_packages'])}\n"
-    diagnosis += f"> *Actions:*\n{actions}"
-    if result.get("needs_human_investigation"):
-        diagnosis += f"\n> :mag: *Needs investigation:* {result.get('investigation_reason', '')}"
+    # Build concise diagnosis
+    diagnosis_parts = [
+        f"_{root_cause}_ (Severity: {severity})"
+    ]
 
-    return diagnosis
+    # Add top 3 action items only
+    if actions:
+        diagnosis_parts.append("Recommended actions:")
+        for i, action in enumerate(actions[:3], 1):
+            # Truncate long actions
+            short_action = action[:100] + "..." if len(action) > 100 else action
+            diagnosis_parts.append(f"     {i}. {short_action}")
+        if len(actions) > 3:
+            diagnosis_parts.append(f"     ... and {len(actions) - 3} more")
+
+    return "\n".join(diagnosis_parts)
 
 
 # ============================================================
@@ -531,65 +534,83 @@ def send_slack_notification(blocks):
 
 def format_slack_blocks(date_str, version_reports):
     """Build structured Slack blocks from version reports."""
-    blocks = [
-        {"type": "header", "text": {"type": "plain_text", "text": f"Fedora IoT Compose Report - {date_str}"}},
-        {"type": "context", "elements": [{"type": "mrkdwn", "text": f"<{RUN_URL}|GitHub Actions run log>"}]},
-        {"type": "divider"},
-    ]
-
+    # Build simple text message for better readability
     status_emojis = {
-        "FINISHED": "white_check_mark", "FINISHED_INCOMPLETE": "warning",
-        "DOOMED": "fire", "STARTED": "hourglass_flowing_sand", "MISSING": "x",
+        "FINISHED": ":white_check_mark:",
+        "FINISHED_INCOMPLETE": ":warning:",
+        "DOOMED": ":fire:",
+        "STARTED": ":hourglass_flowing_sand:",
+        "MISSING": ":x:",
     }
 
+    message_lines = [
+        f":newspaper: *Fedora IoT Compose Status - {date_str}*",
+        ""
+    ]
+
     for report in version_reports:
-        emoji = status_emojis.get(report["status"], "question")
-        text = f":{emoji}: *Fedora IoT {report['version']}* — `{report['status']}`"
+        emoji = status_emojis.get(report["status"], ":question:")
+        version = report['version']
+        status = report['status']
 
+        # Build status line
+        if status in ("FINISHED", "STARTED"):
+            line = f"{emoji} *Fedora-IoT-{version}:* Compose {status.lower()}"
+        elif status == "MISSING":
+            line = f"{emoji} *Fedora-IoT-{version}:* No compose found for {date_str}"
+        else:
+            line = f"{emoji} *Fedora-IoT-{version}:* Failed with status {status}"
+
+        message_lines.append(line)
+
+        # Add compose URL if available
         if report.get("compose_url"):
-            text += f"\n<{report['compose_url']}|Compose directory>"
+            message_lines.append(f"   • <{report['compose_url']}|View compose directory>")
 
-        # openQA
+        # Add openQA summary
         oqa = report.get("openqa")
         if oqa and oqa.get("total", 0) > 0:
-            oqa_line = f"\n*openQA:* {oqa['passed']} passed"
-            if oqa["failed"]:
-                oqa_line += f", *{oqa['failed']} failed*"
-            if oqa["softfailed"]:
-                oqa_line += f", {oqa['softfailed']} softfailed"
-            if oqa["running"]:
-                oqa_line += f", {oqa['running']} running"
-            if oqa.get("url"):
-                oqa_line += f" — <{oqa['url']}|View tests>"
-            text += oqa_line
+            oqa_parts = []
+            if oqa["passed"] > 0:
+                oqa_parts.append(f"{oqa['passed']} passed")
+            if oqa["failed"] > 0:
+                oqa_parts.append(f"*{oqa['failed']} failed*")
+            if oqa["softfailed"] > 0:
+                oqa_parts.append(f"{oqa['softfailed']} softfailed")
+            if oqa["running"] > 0:
+                oqa_parts.append(f"{oqa['running']} running")
+
+            if oqa_parts:
+                oqa_text = f"   • openQA: {', '.join(oqa_parts)}"
+                if oqa.get("url"):
+                    oqa_text += f" — <{oqa['url']}|View tests>"
+                message_lines.append(oqa_text)
+
+            # Show failed tests
             if oqa["failed_tests"]:
-                text += f"\n:x: *Failed:* {', '.join(oqa['failed_tests'])}"
-            if oqa["softfailed_tests"]:
-                shown = ', '.join(oqa['softfailed_tests'][:5])
-                extra = len(oqa['softfailed_tests']) - 5
-                text += f"\n:warning: *Softfailed:* {shown}"
-                if extra > 0:
-                    text += f" + {extra} more"
+                failed_list = ", ".join(oqa["failed_tests"][:3])
+                if len(oqa["failed_tests"]) > 3:
+                    failed_list += f" +{len(oqa['failed_tests']) - 3} more"
+                message_lines.append(f"   • Failed tests: {failed_list}")
 
-        # Containers
-        if report.get("containers"):
-            parts = []
-            for repo_name, info in report["containers"].items():
-                short = repo_name.split('/')[-1]
-                if info.get("exists"):
-                    parts.append(f"{short} (updated {info['last_modified'][:16]})")
-                else:
-                    parts.append(f"*{short} MISSING*")
-            text += f"\n*Containers:* {', '.join(parts)}"
-
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
-
+        # Add AI diagnosis for failures
         if report.get("diagnosis"):
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": report["diagnosis"]}})
+            message_lines.append("")
+            message_lines.append(f"   :robot_face: *AI Analysis:*")
+            message_lines.append(f"   {report['diagnosis']}")
 
-        blocks.append({"type": "divider"})
+        message_lines.append("")  # Blank line between versions
 
-    return blocks
+    # Add footer
+    message_lines.append(f"<{RUN_URL}|View full GitHub Actions run log>")
+
+    # Return as simple blocks
+    return [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "\n".join(message_lines)}
+        }
+    ]
 
 
 # ============================================================
